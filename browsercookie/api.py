@@ -1,35 +1,45 @@
+"""
+Load browser cookies into a cookiejar
+"""
 # -*- coding: utf-8 -*-
-__doc__ = 'Load browser cookies into a cookiejar'
 
 import os
 import sys
 import time
 import glob
+import tempfile
+import keyring
+
+from contextlib import contextmanager
+
+from Crypto.Protocol.KDF import PBKDF2
+from Crypto.Cipher import AES
+
 try:
     import cookielib
 except ImportError:
     import http.cookiejar as cookielib
-from contextlib import contextmanager
-import tempfile
+
 try:
     import json
 except ImportError:
     import simplejson as json
+
 try:
     import ConfigParser as configparser
 except ImportError:
     import configparser
 
 try:
-    # should use pysqlite2 to read the cookies.sqlite on Windows
-    # otherwise will raise the "sqlite3.DatabaseError: file is encrypted or is not a database" exception
-    from pysqlite2 import dbapi2 as sqlite3
+    if sys.platform == 'win32':
+        # should use pysqlite2 to read the cookies.sqlite on Windows
+        # otherwise will raise the "sqlite3.DatabaseError: file is encrypted or is not a database" exception
+        from pysqlite2 import dbapi2 as sqlite3
+    else:
+        raise ImportError("continue")  # lol
 except ImportError:
     import sqlite3
 
-import keyring
-from Crypto.Protocol.KDF import PBKDF2
-from Crypto.Cipher import AES
 
 class BrowserCookieError(Exception):
     pass
@@ -54,6 +64,7 @@ def create_local_copy(cookie_file):
 
 
 class BrowserCookieLoader(object):
+
     def __init__(self, cookie_files=None):
         cookie_files = cookie_files or self.find_cookie_files()
         self.cookie_files = list(cookie_files)
@@ -75,18 +86,23 @@ class BrowserCookieLoader(object):
 
 
 class Chrome(BrowserCookieLoader):
+
     def __str__(self):
         return 'chrome'
 
+    _paths = [
+        os.path.expanduser('~/Library/Application Support/Google/Chrome/Default/Cookies'),
+        os.path.expanduser('~/.config/chromium/Default/Cookies'),
+        os.path.expanduser('~/.config/chromium/Profile */Cookies'),
+        os.path.expanduser('~/.config/google-chrome/Default/Cookies'),
+        os.path.expanduser('~/.config/google-chrome/Profile */Cookies'),
+        os.path.expanduser('~/.config/google-chrome-unstable/Default/Cookies'),
+        os.path.expanduser('~/.config/google-chrome-unstable/Profile */Cookies'),
+        os.path.join(os.getenv('APPDATA', ''), r'..\Local\Google\Chrome\User Data\Default\Cookies'),
+    ]
+
     def find_cookie_files(self):
-        for pattern in [
-            os.path.expanduser('~/Library/Application Support/Google/Chrome/Default/Cookies'),
-            os.path.expanduser('~/.config/chromium/Default/Cookies'),
-            os.path.expanduser('~/.config/chromium/Profile */Cookies'),
-            os.path.expanduser('~/.config/google-chrome/Default/Cookies'),
-            os.path.expanduser('~/.config/google-chrome/Profile */Cookies'),
-            os.path.join(os.getenv('APPDATA', ''), r'..\Local\Google\Chrome\User Data\Default\Cookies'),
-        ]:
+        for pattern in self._paths:
             for result in glob.glob(pattern):
                 yield result
 
@@ -156,6 +172,7 @@ class Chrome(BrowserCookieLoader):
 
 
 class Firefox(BrowserCookieLoader):
+
     def __str__(self):
         return 'firefox'
 
@@ -219,7 +236,10 @@ class Firefox(BrowserCookieLoader):
                         expires = str(int(time.time()) + 3600 * 24 * 7)
                         for window in json_data.get('windows', []):
                             for cookie in window.get('cookies', []):
-                                yield create_cookie(cookie.get('host', ''), cookie.get('path', ''), False, expires, cookie.get('name', ''), cookie.get('value', ''))
+                                yield create_cookie(
+                                    cookie.get('host', ''),
+                                    cookie.get('path', ''), False, expires, cookie.get('name', ''), cookie.get('value', '')
+                                )
                 else:
                     print('Firefox session filename does not exist:', session_file)
 
@@ -227,7 +247,10 @@ class Firefox(BrowserCookieLoader):
 def create_cookie(host, path, secure, expires, name, value):
     """Shortcut function to create a cookie
     """
-    return cookielib.Cookie(0, name, value, None, False, host, host.startswith('.'), host.startswith('.'), path, True, secure, expires, False, None, None, {})
+    return cookielib.Cookie(
+        0, name, value, None, False, host,
+        host.startswith('.'), host.startswith('.'), path, True, secure, expires, False, None, None, {}
+    )
 
 
 def chrome(cookie_file=None):
