@@ -6,7 +6,8 @@ from pprint import pprint
 
 def main():
     jar = api.load()
-    pprint(jar)
+    for cookie in jar:
+        pprint(cookie)
 
 
 if __name__ == '__main__':
