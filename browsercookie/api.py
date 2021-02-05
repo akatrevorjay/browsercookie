@@ -55,7 +55,11 @@ def create_local_copy(cookie_file):
     if os.path.exists(cookie_file):
         # copy to random name in tmp folder
         tmp_cookie_file = tempfile.NamedTemporaryFile(suffix='.sqlite').name
-        open(tmp_cookie_file, 'wb').write(open(cookie_file, 'rb').read())
+
+        with open(tmp_cookie_file, 'wb') as tmp_cookie_write_handle:
+            with open(cookie_file, 'rb') as tmp_cookie_read_handle:
+                tmp_cookie_write_handle.write(tmp_cookie_read_handle.read())
+                
         yield tmp_cookie_file
     else:
         raise BrowserCookieError('Can not find cookie file at: ' + cookie_file)
